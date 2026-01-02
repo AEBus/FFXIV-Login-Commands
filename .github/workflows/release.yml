@@ -1,0 +1,96 @@
+name: Release
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  Release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      DALAMUD_HOME: /tmp/dalamud
+      IsCI: true
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Extract version
+        run: |
+          tag=${{ github.ref_name }}
+          if [[ $tag =~ ^v(.+)$ ]]; then
+              version="${BASH_REMATCH[1]}"
+          else
+              echo "Tag format not recognized"
+              exit 1
+          fi
+          echo "VERSION=$version" >> $GITHUB_ENV
+
+      - name: Download Dalamud Library
+        run: |
+          wget https://goatcorp.github.io/dalamud-distrib/latest.zip -O /tmp/dalamud.zip
+          unzip /tmp/dalamud.zip -d /tmp/dalamud
+
+      - name: Restore Dependencies
+        run: dotnet restore
+
+      - name: Build plugin in release mode
+        run: |
+          dotnet build -c Release --no-restore --nologo \
+          -p:Version=${{ env.VERSION }} \
+          -p:AssemblyVersion=${{ env.VERSION }} \
+          -p:FileVersion=${{ env.VERSION }}
+
+      - name: Generate Checksums & Export ApiLevel
+        working-directory: FFXIVLoginCommands/bin/x64/Release/FFXIVLoginCommands
+        run: |
+          sha512sum latest.zip >> checksums.sha512
+          dalamud_api_level=$(jq -r '.DalamudApiLevel' FFXIVLoginCommands.json)
+          echo "DALAMUD_API_LEVEL=$dalamud_api_level" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            FFXIVLoginCommands/bin/x64/Release/FFXIVLoginCommands/latest.zip
+            FFXIVLoginCommands/bin/x64/Release/FFXIVLoginCommands/checksums.sha512
+          prerelease: false
+          append_body: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+      - name: Update repo.json
+        run: |
+          release_version="${{ env.VERSION }}"
+          repo_url="${{ github.server_url }}/${{ github.repository }}"
+          jq --arg release_version "$release_version" \
+          --arg repo_url "$repo_url/releases/download/${{ github.ref_name }}/latest.zip" \
+          '.[0].AssemblyVersion = $release_version |
+          .[0].TestingAssemblyVersion = $release_version |
+          .[0].DownloadLinkInstall = $repo_url |
+          .[0].DownloadLinkUpdate = $repo_url |
+          .[0].DownloadLinkTesting = $repo_url |
+          .[0].DalamudApiLevel = '"${{ env.DALAMUD_API_LEVEL }}"' |
+          .[0].TestingDalamudApiLevel = '"${{ env.DALAMUD_API_LEVEL }}"'' \
+          repo.json > tmp.json && mv tmp.json repo.json
+
+          git add repo.json
+          git config --local user.name "github-actions [bot]"
+          git config --local user.email "github-actions@users.noreply.github.com"
+          git commit -m "Update repo.json for ${{ github.ref_name }}"
+          git push origin HEAD:master
