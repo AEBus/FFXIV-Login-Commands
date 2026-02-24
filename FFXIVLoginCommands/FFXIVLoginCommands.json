@@ -3,7 +3,6 @@
   "Name": "FFXIV Login Commands",
   "Punchline": "Run chat commands automatically when you log in.",
   "Description": "Per-character and global login commands with delays, session rules, logs, and import/export. Command: /ffxivlogincommands",
-  "ApplicableVersion": "any",
   "RepoUrl": "https://github.com/AEBus/FFXIV-Login-Commands",
   "IconUrl": "https://raw.githubusercontent.com/AEBus/FFXIV-Login-Commands/master/FFXIVLoginCommands/icon.png",
   "Tags": [

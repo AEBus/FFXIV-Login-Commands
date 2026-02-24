@@ -15,7 +15,7 @@ public class ConfigWindow : Window, IDisposable
         Flags = ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoScrollbar |
                 ImGuiWindowFlags.NoScrollWithMouse;
 
-        Size = new Vector2(320, 120);
+        Size = new Vector2(320f, 120f);
         SizeCondition = ImGuiCond.Always;
 
         this.plugin = plugin;

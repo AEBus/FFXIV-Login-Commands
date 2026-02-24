@@ -8,9 +8,6 @@
     "TestingAssemblyVersion": "1.0.0.0",
     "RepoUrl": "https://github.com/AEBus/FFXIV-Login-Commands",
     "IconUrl": "https://github.com/AEBus/FFXIV-Login-Commands/raw/master/FFXIVLoginCommands/icon.png",
-    "ApplicableVersion": "any",
-    "DalamudApiLevel": 14,
-    "TestingDalamudApiLevel": 14,
     "Tags": [
       "Login",
       "Commands",

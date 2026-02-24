@@ -4,6 +4,8 @@ using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Utility;
+using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
 namespace FFXIVLoginCommands.Windows;
@@ -19,13 +21,14 @@ public class MainWindow : Window, IDisposable
     private string importExportStatus = string.Empty;
     private string logSearchText = string.Empty;
     private int logStatusFilterIndex = 0;
+    private static float UiScale(float value) => value * ImGuiHelpers.GlobalScale;
 
     public MainWindow(Plugin plugin)
         : base("FFXIV Login Commands##MainWindow", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(900, 620),
+            MinimumSize = new Vector2(900f, 620f),
             MaximumSize = new Vector2(float.MaxValue, float.MaxValue)
         };
 
@@ -43,48 +46,59 @@ public class MainWindow : Window, IDisposable
     {
         ImGui.Text($"Active character: {plugin.ActiveCharacterDisplay}");
 
-        if (!ImGui.BeginTabBar("FFXIVLoginCommandsTabs"))
+        using var tabBar = ImRaii.TabBar("FFXIVLoginCommandsTabs"u8);
+        if (!tabBar)
         {
             return;
         }
 
-        if (ImGui.BeginTabItem("Profiles"))
+        using (var profilesTab = ImRaii.TabItem("Profiles"u8))
         {
-            DrawProfilesTab();
-            ImGui.EndTabItem();
+            if (profilesTab)
+            {
+                DrawProfilesTab();
+            }
         }
 
-        if (ImGui.BeginTabItem("Commands"))
+        using (var commandsTab = ImRaii.TabItem("Commands"u8))
         {
-            DrawCommandsTab();
-            ImGui.EndTabItem();
+            if (commandsTab)
+            {
+                DrawCommandsTab();
+            }
         }
 
-        if (ImGui.BeginTabItem("Execution"))
+        using (var executionTab = ImRaii.TabItem("Execution"u8))
         {
-            DrawExecutionTab();
-            ImGui.EndTabItem();
+            if (executionTab)
+            {
+                DrawExecutionTab();
+            }
         }
 
-        if (ImGui.BeginTabItem("Logs"))
+        using (var logsTab = ImRaii.TabItem("Logs"u8))
         {
-            DrawLogsTab();
-            ImGui.EndTabItem();
+            if (logsTab)
+            {
+                DrawLogsTab();
+            }
         }
 
-        if (ImGui.BeginTabItem("Import/Export"))
+        using (var importExportTab = ImRaii.TabItem("Import/Export"u8))
         {
-            DrawImportExportTab();
-            ImGui.EndTabItem();
+            if (importExportTab)
+            {
+                DrawImportExportTab();
+            }
         }
 
-        if (ImGui.BeginTabItem("About"))
+        using (var aboutTab = ImRaii.TabItem("About"u8))
         {
-            DrawAboutTab();
-            ImGui.EndTabItem();
+            if (aboutTab)
+            {
+                DrawAboutTab();
+            }
         }
-
-        ImGui.EndTabBar();
     }
 
     private void DrawProfilesTab()
@@ -239,21 +253,26 @@ public class MainWindow : Window, IDisposable
 
         ImGui.Spacing();
 
-        if (ImGui.BeginTable("CommandsTable", 7, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable))
+        using (var commandsTable = ImRaii.Table("CommandsTable"u8, 7, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable))
         {
-            ImGui.TableSetupColumn("Enabled", ImGuiTableColumnFlags.WidthFixed, 70);
-            ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthFixed, 170);
+            if (!commandsTable)
+            {
+                return;
+            }
+
+            ImGui.TableSetupColumn("Enabled", ImGuiTableColumnFlags.WidthFixed, UiScale(70f));
+            ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthFixed, UiScale(170f));
             ImGui.TableSetupColumn("Command", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableSetupColumn("Delay (ms)", ImGuiTableColumnFlags.WidthFixed, 90);
-            ImGui.TableSetupColumn("Run Mode", ImGuiTableColumnFlags.WidthFixed, 120);
-            ImGui.TableSetupColumn("Order", ImGuiTableColumnFlags.WidthFixed, 80);
-            ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed, 80);
+            ImGui.TableSetupColumn("Delay (ms)", ImGuiTableColumnFlags.WidthFixed, UiScale(90f));
+            ImGui.TableSetupColumn("Run Mode", ImGuiTableColumnFlags.WidthFixed, UiScale(120f));
+            ImGui.TableSetupColumn("Order", ImGuiTableColumnFlags.WidthFixed, UiScale(80f));
+            ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed, UiScale(80f));
             ImGui.TableHeadersRow();
 
             for (var i = 0; i < commandList.Count; i++)
             {
                 var command = commandList[i];
-                ImGui.PushID(command.Id.ToString());
+                using var rowId = ImRaii.PushId(i);
                 ImGui.TableNextRow();
 
                 ImGui.TableNextColumn();
@@ -315,14 +334,9 @@ public class MainWindow : Window, IDisposable
                 {
                     commandList.RemoveAt(i);
                     configuration.Save();
-                    ImGui.PopID();
                     break;
                 }
-
-                ImGui.PopID();
             }
-
-            ImGui.EndTable();
         }
     }
 
@@ -348,19 +362,24 @@ public class MainWindow : Window, IDisposable
 
         ImGui.Spacing();
 
-        if (ImGui.BeginTable("ExecutionTable", 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable))
+        using (var executionTable = ImRaii.Table("ExecutionTable"u8, 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable))
         {
-            ImGui.TableSetupColumn("#", ImGuiTableColumnFlags.WidthFixed, 40);
+            if (!executionTable)
+            {
+                return;
+            }
+
+            ImGui.TableSetupColumn("#", ImGuiTableColumnFlags.WidthFixed, UiScale(40f));
             ImGui.TableSetupColumn("Command", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableSetupColumn("Delay (ms)", ImGuiTableColumnFlags.WidthFixed, 90);
-            ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthFixed, 90);
+            ImGui.TableSetupColumn("Delay (ms)", ImGuiTableColumnFlags.WidthFixed, UiScale(90f));
+            ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthFixed, UiScale(90f));
             ImGui.TableSetupColumn("Message", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed, 100);
+            ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed, UiScale(100f));
             ImGui.TableHeadersRow();
 
             foreach (var entry in new List<Plugin.ExecutionEntry>(plugin.ExecutionPlan))
             {
-                ImGui.PushID(entry.SequenceIndex);
+                using var rowId = ImRaii.PushId(entry.SequenceIndex);
                 ImGui.TableNextRow();
                 ImGui.TableNextColumn();
                 ImGui.Text(entry.SequenceIndex.ToString());
@@ -390,11 +409,7 @@ public class MainWindow : Window, IDisposable
                 {
                     ImGui.Text("-");
                 }
-
-                ImGui.PopID();
             }
-
-            ImGui.EndTable();
         }
     }
 
@@ -417,11 +432,16 @@ public class MainWindow : Window, IDisposable
 
         ImGui.Spacing();
 
-        if (ImGui.BeginTable("LogsTable", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable))
+        using (var logsTable = ImRaii.Table("LogsTable"u8, 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable))
         {
-            ImGui.TableSetupColumn("Time (UTC)", ImGuiTableColumnFlags.WidthFixed, 150);
-            ImGui.TableSetupColumn("Character", ImGuiTableColumnFlags.WidthFixed, 140);
-            ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthFixed, 90);
+            if (!logsTable)
+            {
+                return;
+            }
+
+            ImGui.TableSetupColumn("Time (UTC)", ImGuiTableColumnFlags.WidthFixed, UiScale(150f));
+            ImGui.TableSetupColumn("Character", ImGuiTableColumnFlags.WidthFixed, UiScale(140f));
+            ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthFixed, UiScale(90f));
             ImGui.TableSetupColumn("Command", ImGuiTableColumnFlags.WidthStretch);
             ImGui.TableSetupColumn("Message", ImGuiTableColumnFlags.WidthStretch);
             ImGui.TableHeadersRow();
@@ -463,8 +483,6 @@ public class MainWindow : Window, IDisposable
                 ImGui.TableNextColumn();
                 ImGui.Text(log.Message);
             }
-
-            ImGui.EndTable();
         }
     }
 
@@ -511,7 +529,7 @@ public class MainWindow : Window, IDisposable
         }
 
         ImGui.Text(importExportStatus);
-        ImGui.InputTextMultiline("##importexport", ref importExportText, 20000, new Vector2(-1, 360));
+        ImGui.InputTextMultiline("##importexport", ref importExportText, 20000, new Vector2(-1f, UiScale(360f)));
     }
 
     private void DrawAboutTab()
