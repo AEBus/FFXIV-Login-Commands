@@ -200,13 +200,7 @@ public class MainWindow : Window, IDisposable
         if (ImGui.InputText("World Name", ref worldName, 120))
         {
             selected.WorldName = worldName;
-            plugin.QueueConfigurationSave();
-        }
-
-        var worldId = (int)selected.WorldId;
-        if (ImGui.InputInt("World Id", ref worldId))
-        {
-            selected.WorldId = (ushort)Math.Clamp(worldId, 0, ushort.MaxValue);
+            selected.WorldId = 0;
             plugin.QueueConfigurationSave();
         }
 

@@ -27,7 +27,6 @@ public sealed class Plugin : IDalamudPlugin
     public Configuration Configuration { get; init; }
 
     public readonly WindowSystem WindowSystem = new("FFXIVLoginCommands");
-    private ConfigWindow ConfigWindow { get; init; }
     private MainWindow MainWindow { get; init; }
 
     private readonly List<ExecutionEntry> executionPlan = new();
@@ -50,10 +49,8 @@ public sealed class Plugin : IDalamudPlugin
             SaveConfigurationNow();
         }
 
-        ConfigWindow = new ConfigWindow(this);
         MainWindow = new MainWindow(this);
 
-        WindowSystem.AddWindow(ConfigWindow);
         WindowSystem.AddWindow(MainWindow);
 
         CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
@@ -62,7 +59,7 @@ public sealed class Plugin : IDalamudPlugin
         });
 
         PluginInterface.UiBuilder.Draw += WindowSystem.Draw;
-        PluginInterface.UiBuilder.OpenConfigUi += ToggleConfigUi;
+        PluginInterface.UiBuilder.OpenConfigUi += ToggleMainUi;
         PluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
 
         ClientState.Login += OnLogin;
@@ -82,7 +79,7 @@ public sealed class Plugin : IDalamudPlugin
         SaveConfigurationNow();
 
         PluginInterface.UiBuilder.Draw -= WindowSystem.Draw;
-        PluginInterface.UiBuilder.OpenConfigUi -= ToggleConfigUi;
+        PluginInterface.UiBuilder.OpenConfigUi -= ToggleMainUi;
         PluginInterface.UiBuilder.OpenMainUi -= ToggleMainUi;
 
         ClientState.Login -= OnLogin;
@@ -91,7 +88,6 @@ public sealed class Plugin : IDalamudPlugin
 
         WindowSystem.RemoveAllWindows();
 
-        ConfigWindow.Dispose();
         MainWindow.Dispose();
 
         CommandManager.RemoveHandler(CommandName);
@@ -105,7 +101,7 @@ public sealed class Plugin : IDalamudPlugin
         MainWindow.Toggle();
     }
 
-    public void ToggleConfigUi() => ConfigWindow.Toggle();
+    public void ToggleConfigUi() => MainWindow.Toggle();
     public void ToggleMainUi() => MainWindow.Toggle();
 
     private void OnLogin()
@@ -215,7 +211,12 @@ public sealed class Plugin : IDalamudPlugin
         executionPlan.Clear();
         pendingQueue.Clear();
 
-        var profile = FindProfile(characterInfo.Name, characterInfo.WorldId);
+        var profile = FindProfile(characterInfo.Name, characterInfo.WorldId, characterInfo.WorldName);
+        if (profile != null && profile.WorldId != characterInfo.WorldId)
+        {
+            profile.WorldId = characterInfo.WorldId;
+            QueueConfigurationSave();
+        }
         var worldDisplay = string.IsNullOrWhiteSpace(characterInfo.WorldName)
             ? $"World {characterInfo.WorldId}"
             : characterInfo.WorldName;
@@ -274,12 +275,14 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
 
-    private Profile? FindProfile(string name, ushort worldId)
+    private Profile? FindProfile(string name, ushort worldId, string worldName)
     {
         return Configuration.Profiles.FirstOrDefault(profile =>
             profile.Enabled &&
             string.Equals(profile.CharacterName, name, StringComparison.OrdinalIgnoreCase) &&
-            profile.WorldId == worldId);
+            (!string.IsNullOrWhiteSpace(profile.WorldName)
+                ? string.Equals(profile.WorldName, worldName, StringComparison.OrdinalIgnoreCase)
+                : profile.WorldId == worldId));
     }
 
     private void ExecuteEntry(ExecutionEntry entry)
