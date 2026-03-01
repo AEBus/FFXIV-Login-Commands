@@ -5,8 +5,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
-using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
+using OtterGui.Raii;
 
 namespace FFXIVLoginCommands.Windows;
 
@@ -19,8 +19,6 @@ public class MainWindow : Window, IDisposable
     private int selectedTargetIndex = 0;
     private string importExportText = string.Empty;
     private string importExportStatus = string.Empty;
-    private string logSearchText = string.Empty;
-    private int logStatusFilterIndex = 0;
     private static float UiScale(float value) => value * ImGuiHelpers.GlobalScale;
 
     public MainWindow(Plugin plugin)
@@ -45,14 +43,23 @@ public class MainWindow : Window, IDisposable
     public override void Draw()
     {
         ImGui.Text($"Active character: {plugin.ActiveCharacterDisplay}");
+        ImGui.Separator();
 
-        using var tabBar = ImRaii.TabBar("FFXIVLoginCommandsTabs"u8);
+        using var tabBar = ImRaii.TabBar("FFXIVLoginCommandsTabs");
         if (!tabBar)
         {
             return;
         }
 
-        using (var profilesTab = ImRaii.TabItem("Profiles"u8))
+        using (var overviewTab = ImRaii.TabItem("Overview"))
+        {
+            if (overviewTab)
+            {
+                DrawOverviewTab();
+            }
+        }
+
+        using (var profilesTab = ImRaii.TabItem("Profiles"))
         {
             if (profilesTab)
             {
@@ -60,7 +67,7 @@ public class MainWindow : Window, IDisposable
             }
         }
 
-        using (var commandsTab = ImRaii.TabItem("Commands"u8))
+        using (var commandsTab = ImRaii.TabItem("Commands"))
         {
             if (commandsTab)
             {
@@ -68,7 +75,7 @@ public class MainWindow : Window, IDisposable
             }
         }
 
-        using (var executionTab = ImRaii.TabItem("Execution"u8))
+        using (var executionTab = ImRaii.TabItem("Execution"))
         {
             if (executionTab)
             {
@@ -76,15 +83,7 @@ public class MainWindow : Window, IDisposable
             }
         }
 
-        using (var logsTab = ImRaii.TabItem("Logs"u8))
-        {
-            if (logsTab)
-            {
-                DrawLogsTab();
-            }
-        }
-
-        using (var importExportTab = ImRaii.TabItem("Import/Export"u8))
+        using (var importExportTab = ImRaii.TabItem("Import/Export"))
         {
             if (importExportTab)
             {
@@ -92,13 +91,36 @@ public class MainWindow : Window, IDisposable
             }
         }
 
-        using (var aboutTab = ImRaii.TabItem("About"u8))
+        using (var devTab = ImRaii.TabItem("Dev"))
+        {
+            if (devTab)
+            {
+                DrawDevTab();
+            }
+        }
+
+        using (var aboutTab = ImRaii.TabItem("About"))
         {
             if (aboutTab)
             {
                 DrawAboutTab();
             }
         }
+    }
+
+    private void DrawOverviewTab()
+    {
+        var configuration = plugin.Configuration;
+
+        ImGui.Text("Quick setup");
+        ImGui.BulletText("Create one profile per character.");
+        ImGui.BulletText("Add global or profile commands in order.");
+        ImGui.BulletText("Use Execution tab to run/skip pending actions.");
+        ImGui.Separator();
+
+        ImGui.Text($"Profiles: {configuration.Profiles.Count}");
+        ImGui.Text($"Global commands: {configuration.GlobalCommands.Count}");
+        ImGui.Text($"Pending commands right now: {plugin.PendingQueue.Count}");
     }
 
     private void DrawProfilesTab()
@@ -120,7 +142,7 @@ public class MainWindow : Window, IDisposable
 
             configuration.Profiles.Add(profile);
             selectedProfileIndex = configuration.Profiles.Count - 1;
-            configuration.Save();
+            plugin.QueueConfigurationSave();
         }
 
         ImGui.SameLine();
@@ -128,7 +150,7 @@ public class MainWindow : Window, IDisposable
         {
             configuration.Profiles.RemoveAt(selectedProfileIndex);
             selectedProfileIndex = Math.Min(selectedProfileIndex, configuration.Profiles.Count - 1);
-            configuration.Save();
+            plugin.QueueConfigurationSave();
         }
 
         ImGui.Spacing();
@@ -157,35 +179,35 @@ public class MainWindow : Window, IDisposable
         if (ImGui.Checkbox("Enabled", ref enabled))
         {
             selected.Enabled = enabled;
-            configuration.Save();
+            plugin.QueueConfigurationSave();
         }
 
         var labelText = selected.Label;
         if (ImGui.InputText("Label", ref labelText, 120))
         {
             selected.Label = labelText;
-            configuration.Save();
+            plugin.QueueConfigurationSave();
         }
 
         var nameText = selected.CharacterName;
         if (ImGui.InputText("Character Name", ref nameText, 120))
         {
             selected.CharacterName = nameText;
-            configuration.Save();
+            plugin.QueueConfigurationSave();
         }
 
         var worldName = selected.WorldName;
         if (ImGui.InputText("World Name", ref worldName, 120))
         {
             selected.WorldName = worldName;
-            configuration.Save();
+            plugin.QueueConfigurationSave();
         }
 
         var worldId = (int)selected.WorldId;
         if (ImGui.InputInt("World Id", ref worldId))
         {
             selected.WorldId = (ushort)Math.Clamp(worldId, 0, ushort.MaxValue);
-            configuration.Save();
+            plugin.QueueConfigurationSave();
         }
 
         if (ImGui.Button("Use Current Character") && plugin.TryGetCurrentCharacterInfo(out var currentInfo))
@@ -198,7 +220,7 @@ public class MainWindow : Window, IDisposable
                 selected.Label = $"{currentInfo.Name} ({currentInfo.WorldName})";
             }
 
-            configuration.Save();
+            plugin.QueueConfigurationSave();
         }
     }
 
@@ -248,12 +270,12 @@ public class MainWindow : Window, IDisposable
                 RunMode = CommandRunMode.EveryLogin,
                 Enabled = true
             });
-            configuration.Save();
+            plugin.QueueConfigurationSave();
         }
 
         ImGui.Spacing();
 
-        using (var commandsTable = ImRaii.Table("CommandsTable"u8, 7, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable))
+        using (var commandsTable = ImRaii.Table("CommandsTable", 7, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable))
         {
             if (!commandsTable)
             {
@@ -280,7 +302,7 @@ public class MainWindow : Window, IDisposable
                 if (ImGui.Checkbox("##enabled", ref enabled))
                 {
                     command.Enabled = enabled;
-                    configuration.Save();
+                    plugin.QueueConfigurationSave();
                 }
 
                 ImGui.TableNextColumn();
@@ -288,7 +310,7 @@ public class MainWindow : Window, IDisposable
                 if (ImGui.InputText("##name", ref name, 120))
                 {
                     command.Name = name;
-                    configuration.Save();
+                    plugin.QueueConfigurationSave();
                 }
 
                 ImGui.TableNextColumn();
@@ -296,15 +318,15 @@ public class MainWindow : Window, IDisposable
                 if (ImGui.InputText("##command", ref commandText, 512))
                 {
                     command.CommandText = commandText;
-                    configuration.Save();
+                    plugin.QueueConfigurationSave();
                 }
 
                 ImGui.TableNextColumn();
                 var delayMs = command.DelayMs;
                 if (ImGui.InputInt("##delay", ref delayMs))
                 {
-                    command.DelayMs = Math.Max(0, delayMs);
-                    configuration.Save();
+                    command.DelayMs = Math.Clamp(delayMs, 0, SettingsSanitizer.MaxDelayMs);
+                    plugin.QueueConfigurationSave();
                 }
 
                 ImGui.TableNextColumn();
@@ -313,27 +335,27 @@ public class MainWindow : Window, IDisposable
                 if (ImGui.Combo("##runmode", ref runModeIndex, runModeOptions, runModeOptions.Length))
                 {
                     command.RunMode = runModeIndex == 0 ? CommandRunMode.EveryLogin : CommandRunMode.OncePerSession;
-                    configuration.Save();
+                    plugin.QueueConfigurationSave();
                 }
 
                 ImGui.TableNextColumn();
                 if (ImGui.Button("Up") && i > 0)
                 {
                     (commandList[i - 1], commandList[i]) = (commandList[i], commandList[i - 1]);
-                    configuration.Save();
+                    plugin.QueueConfigurationSave();
                 }
                 ImGui.SameLine();
                 if (ImGui.Button("Down") && i < commandList.Count - 1)
                 {
                     (commandList[i + 1], commandList[i]) = (commandList[i], commandList[i + 1]);
-                    configuration.Save();
+                    plugin.QueueConfigurationSave();
                 }
 
                 ImGui.TableNextColumn();
                 if (ImGui.Button("Delete"))
                 {
                     commandList.RemoveAt(i);
-                    configuration.Save();
+                    plugin.QueueConfigurationSave();
                     break;
                 }
             }
@@ -362,7 +384,7 @@ public class MainWindow : Window, IDisposable
 
         ImGui.Spacing();
 
-        using (var executionTable = ImRaii.Table("ExecutionTable"u8, 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable))
+        using (var executionTable = ImRaii.Table("ExecutionTable", 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable))
         {
             if (!executionTable)
             {
@@ -413,83 +435,11 @@ public class MainWindow : Window, IDisposable
         }
     }
 
-    private void DrawLogsTab()
-    {
-        var configuration = plugin.Configuration;
-
-        ImGui.Text("Execution history.");
-        ImGui.Separator();
-
-        ImGui.InputText("Search", ref logSearchText, 200);
-        var statusOptions = new[] { "All", "Sent", "Skipped", "Error" };
-        ImGui.Combo("Status", ref logStatusFilterIndex, statusOptions, statusOptions.Length);
-
-        if (ImGui.Button("Clear Logs"))
-        {
-            configuration.Logs.Clear();
-            configuration.Save();
-        }
-
-        ImGui.Spacing();
-
-        using (var logsTable = ImRaii.Table("LogsTable"u8, 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable))
-        {
-            if (!logsTable)
-            {
-                return;
-            }
-
-            ImGui.TableSetupColumn("Time (UTC)", ImGuiTableColumnFlags.WidthFixed, UiScale(150f));
-            ImGui.TableSetupColumn("Character", ImGuiTableColumnFlags.WidthFixed, UiScale(140f));
-            ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthFixed, UiScale(90f));
-            ImGui.TableSetupColumn("Command", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableSetupColumn("Message", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableHeadersRow();
-
-            foreach (var log in new List<LogEntry>(configuration.Logs))
-            {
-                if (!string.IsNullOrWhiteSpace(logSearchText) &&
-                    !log.CommandText.Contains(logSearchText, StringComparison.OrdinalIgnoreCase) &&
-                    !log.Message.Contains(logSearchText, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                if (logStatusFilterIndex != 0)
-                {
-                    var filterStatus = logStatusFilterIndex switch
-                    {
-                        1 => CommandStatus.Sent,
-                        2 => CommandStatus.Skipped,
-                        3 => CommandStatus.Error,
-                        _ => CommandStatus.Sent
-                    };
-
-                    if (log.Status != filterStatus)
-                    {
-                        continue;
-                    }
-                }
-
-                ImGui.TableNextRow();
-                ImGui.TableNextColumn();
-                ImGui.Text(log.TimestampUtc.ToString("yyyy-MM-dd HH:mm:ss"));
-                ImGui.TableNextColumn();
-                ImGui.Text(log.CharacterKey);
-                ImGui.TableNextColumn();
-                ImGui.Text(log.Status.ToString());
-                ImGui.TableNextColumn();
-                ImGui.Text(log.CommandText);
-                ImGui.TableNextColumn();
-                ImGui.Text(log.Message);
-            }
-        }
-    }
-
     private void DrawImportExportTab()
     {
         var configuration = plugin.Configuration;
         ImGui.Text("Import or export profiles and global commands as JSON.");
+        ImGui.Text("Import only trusted JSON. Imported commands are sanitized before saving.");
         ImGui.Separator();
 
         if (ImGui.Button("Export Settings"))
@@ -516,10 +466,11 @@ public class MainWindow : Window, IDisposable
                 }
                 else
                 {
-                    configuration.Profiles = imported.Profiles ?? new List<Profile>();
-                    configuration.GlobalCommands = imported.GlobalCommands ?? new List<CommandEntry>();
-                    configuration.Save();
-                    importExportStatus = "Import complete.";
+                    var normalized = SettingsSanitizer.NormalizeImported(imported, out var importedProfiles, out var importedCommands);
+                    configuration.Profiles = normalized.Profiles;
+                    configuration.GlobalCommands = normalized.GlobalCommands;
+                    plugin.QueueConfigurationSave(immediate: true);
+                    importExportStatus = $"Import complete. Profiles: {importedProfiles}, Commands: {importedCommands}.";
                 }
             }
             catch (Exception ex)
@@ -540,5 +491,22 @@ public class MainWindow : Window, IDisposable
         ImGui.Separator();
         ImGui.Text("Repository: https://github.com/AEBus/FFXIV-Login-Commands");
         ImGui.Text("Documentation: https://github.com/AEBus/FFXIV-Login-Commands");
+    }
+
+    private void DrawDevTab()
+    {
+        var configuration = plugin.Configuration;
+
+        ImGui.Text("Developer options");
+        ImGui.Separator();
+
+        var xlLogOutput = configuration.EnableXlLogOutput;
+        if (ImGui.Checkbox("Write execution logs to XL log", ref xlLogOutput))
+        {
+            configuration.EnableXlLogOutput = xlLogOutput;
+            plugin.QueueConfigurationSave();
+        }
+
+        ImGui.TextDisabled("When disabled, command execution is not logged in XL log.");
     }
 }

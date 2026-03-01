@@ -20,7 +20,9 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
 
     private const string CommandName = "/ffxivlogincommands";
-    private const int MaxLogEntries = 500;
+    private static readonly TimeSpan SaveDebounce = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan LoginRetryInterval = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan LoginRetryTimeout = TimeSpan.FromSeconds(20);
 
     public Configuration Configuration { get; init; }
 
@@ -31,12 +33,22 @@ public sealed class Plugin : IDalamudPlugin
     private readonly List<ExecutionEntry> executionPlan = new();
     private readonly List<ExecutionEntry> pendingQueue = new();
     private readonly HashSet<Guid> sessionExecutedCommands = new();
+    private bool configSavePending;
+    private DateTime saveNotBeforeUtc;
+    private bool loginPlanPending;
+    private DateTime loginRetryDeadlineUtc;
+    private DateTime nextLoginRetryUtc;
 
     public string ActiveCharacterDisplay { get; private set; } = "Not logged in";
 
     public Plugin()
     {
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+        if (SettingsSanitizer.NormalizeConfiguration(Configuration))
+        {
+            QueueConfigurationSave(immediate: true);
+            SaveConfigurationNow();
+        }
 
         ConfigWindow = new ConfigWindow(this);
         MainWindow = new MainWindow(this);
@@ -59,7 +71,7 @@ public sealed class Plugin : IDalamudPlugin
 
         if (ClientState.IsLoggedIn)
         {
-            HandleLogin();
+            ScheduleLoginPlanBuild();
         }
 
         Log.Information($"===FFXIV Login Commands loaded ({PluginInterface.Manifest.Name})===");
@@ -67,6 +79,8 @@ public sealed class Plugin : IDalamudPlugin
 
     public void Dispose()
     {
+        SaveConfigurationNow();
+
         PluginInterface.UiBuilder.Draw -= WindowSystem.Draw;
         PluginInterface.UiBuilder.OpenConfigUi -= ToggleConfigUi;
         PluginInterface.UiBuilder.OpenMainUi -= ToggleMainUi;
@@ -96,7 +110,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnLogin()
     {
-        HandleLogin();
+        ScheduleLoginPlanBuild();
     }
 
     private void OnLogout(int type, int code)
@@ -104,17 +118,38 @@ public sealed class Plugin : IDalamudPlugin
         ActiveCharacterDisplay = "Not logged in";
         executionPlan.Clear();
         pendingQueue.Clear();
+        sessionExecutedCommands.Clear();
+        loginPlanPending = false;
     }
 
     private void OnFrameworkUpdate(IFramework framework)
     {
+        var utcNow = DateTime.UtcNow;
+        if (loginPlanPending && utcNow >= nextLoginRetryUtc)
+        {
+            var completed = TryHandleLogin(logIfNotReady: utcNow >= loginRetryDeadlineUtc);
+            if (!completed)
+            {
+                nextLoginRetryUtc = utcNow.Add(LoginRetryInterval);
+                if (utcNow >= loginRetryDeadlineUtc)
+                {
+                    loginPlanPending = false;
+                }
+            }
+        }
+
+        if (configSavePending && utcNow >= saveNotBeforeUtc)
+        {
+            SaveConfigurationNow();
+        }
+
         if (pendingQueue.Count == 0)
         {
             return;
         }
 
         var next = pendingQueue[0];
-        if (DateTime.UtcNow < next.ScheduledUtc)
+        if (utcNow < next.ScheduledUtc)
         {
             return;
         }
@@ -123,17 +158,30 @@ public sealed class Plugin : IDalamudPlugin
         ExecuteEntry(next);
     }
 
-    private void HandleLogin()
+    private void ScheduleLoginPlanBuild()
+    {
+        loginPlanPending = true;
+        nextLoginRetryUtc = DateTime.UtcNow;
+        loginRetryDeadlineUtc = nextLoginRetryUtc.Add(LoginRetryTimeout);
+    }
+
+    private bool TryHandleLogin(bool logIfNotReady)
     {
         var characterInfo = GetCurrentCharacterInfo();
         if (characterInfo == null)
         {
-            Log.Warning("Login detected but character info is not ready.");
-            return;
+            if (logIfNotReady)
+            {
+                Log.Warning("Login detected but character info is not ready.");
+            }
+
+            return false;
         }
 
         ActiveCharacterDisplay = $"{characterInfo.Value.Name} @ {characterInfo.Value.WorldName}";
         BuildExecutionPlan(characterInfo.Value);
+        loginPlanPending = false;
+        return true;
     }
 
     private (string Name, ushort WorldId, string WorldName)? GetCurrentCharacterInfo()
@@ -197,7 +245,6 @@ public sealed class Plugin : IDalamudPlugin
             {
                 entry.Status = CommandStatus.Skipped;
                 entry.Message = "Disabled";
-                AddLog(entry);
                 executionPlan.Add(entry);
                 continue;
             }
@@ -206,7 +253,6 @@ public sealed class Plugin : IDalamudPlugin
             {
                 entry.Status = CommandStatus.Skipped;
                 entry.Message = "Empty command";
-                AddLog(entry);
                 executionPlan.Add(entry);
                 continue;
             }
@@ -215,12 +261,12 @@ public sealed class Plugin : IDalamudPlugin
             {
                 entry.Status = CommandStatus.Skipped;
                 entry.Message = "Already sent this session";
-                AddLog(entry);
+                WriteExecutionLog(entry);
                 executionPlan.Add(entry);
                 continue;
             }
 
-            scheduledTime = scheduledTime.AddMilliseconds(Math.Max(0, command.DelayMs));
+            scheduledTime = scheduledTime.AddMilliseconds(Math.Clamp(command.DelayMs, 0, SettingsSanitizer.MaxDelayMs));
             entry.ScheduledUtc = scheduledTime;
             entry.Status = CommandStatus.Pending;
             executionPlan.Add(entry);
@@ -255,7 +301,7 @@ public sealed class Plugin : IDalamudPlugin
             entry.Message = ex.Message;
         }
 
-        AddLog(entry);
+        WriteExecutionLog(entry);
     }
 
     public void RunEntryNow(ExecutionEntry entry)
@@ -280,7 +326,7 @@ public sealed class Plugin : IDalamudPlugin
         pendingQueue.Remove(entry);
         entry.Status = CommandStatus.Skipped;
         entry.Message = reason;
-        AddLog(entry);
+        WriteExecutionLog(entry);
     }
 
     public void ClearPendingQueue()
@@ -289,30 +335,49 @@ public sealed class Plugin : IDalamudPlugin
         {
             entry.Status = CommandStatus.Skipped;
             entry.Message = "Cleared";
-            AddLog(entry);
+            WriteExecutionLog(entry);
         }
 
         pendingQueue.Clear();
     }
 
-    private void AddLog(ExecutionEntry entry)
+    private void WriteExecutionLog(ExecutionEntry entry)
     {
-        var log = new LogEntry
+        if (!Configuration.EnableXlLogOutput)
         {
-            TimestampUtc = DateTime.UtcNow,
-            CharacterKey = entry.CharacterKey,
-            CommandText = entry.Command.CommandText,
-            Status = entry.Status,
-            Message = entry.Message
-        };
+            return;
+        }
 
-        Configuration.Logs.Add(log);
-        if (Configuration.Logs.Count > MaxLogEntries)
+        var text = $"[{entry.CharacterKey}] #{entry.SequenceIndex} '{entry.Command.Name}': {entry.Command.CommandText} -> {entry.Status} ({entry.Message})";
+        switch (entry.Status)
         {
-            Configuration.Logs.RemoveRange(0, Configuration.Logs.Count - MaxLogEntries);
+            case CommandStatus.Error:
+                Log.Error(text);
+                break;
+            case CommandStatus.Skipped:
+                Log.Warning(text);
+                break;
+            default:
+                Log.Information(text);
+                break;
+        }
+    }
+
+    public void QueueConfigurationSave(bool immediate = false)
+    {
+        configSavePending = true;
+        saveNotBeforeUtc = immediate ? DateTime.UtcNow : DateTime.UtcNow.Add(SaveDebounce);
+    }
+
+    public void SaveConfigurationNow()
+    {
+        if (!configSavePending)
+        {
+            return;
         }
 
         Configuration.Save();
+        configSavePending = false;
     }
 
     public sealed class ExecutionEntry

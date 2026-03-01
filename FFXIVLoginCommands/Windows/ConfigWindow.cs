@@ -47,7 +47,8 @@ public class ConfigWindow : Window, IDisposable
         if (ImGui.Checkbox("Movable Config Window", ref movable))
         {
             configuration.IsConfigWindowMovable = movable;
-            configuration.Save();
+            plugin.QueueConfigurationSave();
         }
+
     }
 }
