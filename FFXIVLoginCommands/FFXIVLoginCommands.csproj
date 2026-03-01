@@ -14,7 +14,4 @@
     </Content>
   </ItemGroup>
 
-  <ItemGroup Condition="Exists('../../../FFXIVFramework/Penumbra/OtterGui/OtterGui.csproj')">
-    <ProjectReference Include="../../../FFXIVFramework/Penumbra/OtterGui/OtterGui.csproj" />
-  </ItemGroup>
 </Project>
