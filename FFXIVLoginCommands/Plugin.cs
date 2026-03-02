@@ -114,7 +114,6 @@ public sealed class Plugin : IDalamudPlugin
         ActiveCharacterDisplay = "Not logged in";
         executionPlan.Clear();
         pendingQueue.Clear();
-        sessionExecutedCommands.Clear();
         loginPlanPending = false;
     }
 
