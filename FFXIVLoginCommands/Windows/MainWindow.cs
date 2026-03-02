@@ -112,10 +112,18 @@ public class MainWindow : Window, IDisposable
     {
         var configuration = plugin.Configuration;
 
-        ImGui.Text("Quick setup");
-        ImGui.BulletText("Create one profile per character.");
-        ImGui.BulletText("Add global or profile commands in order.");
-        ImGui.BulletText("Use Execution tab to run/skip pending actions.");
+        ImGui.Text("Quick start");
+        ImGui.BulletText("Open Profiles and create one profile per character.");
+        ImGui.BulletText("Set Character Name and World Name, then press Use Current Character once while logged in.");
+        ImGui.BulletText("Open Commands and add chat commands (global or per profile).");
+        ImGui.BulletText("Set Delay (ms) to control the order and timing.");
+        ImGui.BulletText("Choose Run Mode: Every Login or Once Per Session.");
+        ImGui.BulletText("Log in with that character. The plugin builds a queue automatically.");
+        ImGui.BulletText("In Execution, use Run Next Now / Skip Next / Clear Pending when needed.");
+        ImGui.BulletText("Optional: in Dev, enable XL logging if you want execution details in XL log.");
+        ImGui.Separator();
+        ImGui.Text("How matching works");
+        ImGui.BulletText("Profile matching uses Character Name + World Name.");
         ImGui.Separator();
 
         ImGui.Text($"Profiles: {configuration.Profiles.Count}");
@@ -482,19 +490,6 @@ public class MainWindow : Window, IDisposable
         ImGui.Text("FFXIV Login Commands");
         ImGui.Text($"Version: {Plugin.PluginInterface.Manifest.AssemblyVersion}");
         ImGui.Text($"Author: {Plugin.PluginInterface.Manifest.Author}");
-        ImGui.Separator();
-        ImGui.Text("Quick start");
-        ImGui.BulletText("Open Profiles and create one profile per character.");
-        ImGui.BulletText("Set Character Name and World Name, then press Use Current Character once while logged in.");
-        ImGui.BulletText("Open Commands and add chat commands (global or per profile).");
-        ImGui.BulletText("Set Delay (ms) to control the order and timing.");
-        ImGui.BulletText("Choose Run Mode: Every Login or Once Per Session.");
-        ImGui.BulletText("Log in with that character. The plugin builds a queue automatically.");
-        ImGui.BulletText("In Execution, use Run Next Now / Skip Next / Clear Pending when needed.");
-        ImGui.BulletText("Optional: in Dev, enable XL logging if you want execution details in XL log.");
-        ImGui.Separator();
-        ImGui.Text("How matching works");
-        ImGui.BulletText("Profile matching uses Character Name + World Name.");
         ImGui.Separator();
         ImGui.Text("Repository: https://github.com/AEBus/FFXIV-Login-Commands");
         ImGui.Text("Documentation: https://github.com/AEBus/FFXIV-Login-Commands");
